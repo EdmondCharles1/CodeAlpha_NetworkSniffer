@@ -7,6 +7,7 @@ A Python network packet sniffer built from scratch using raw sockets to capture 
 ## What It Does
 
 This tool captures network packets in real-time and displays detailed information about each one:
+
 - Source and destination MAC addresses (Ethernet layer)
 - Source and destination IP addresses (IP layer)
 - Protocol detection (TCP, UDP, ICMP)
@@ -17,7 +18,7 @@ This tool captures network packets in real-time and displays detailed informatio
 ## Project Roadmap
 
 - [x] Ethernet frame parsing (MAC addresses, protocol)
-- [ ] IP packet parsing (source/destination IP, TTL)
+- [x] IP packet parsing (source/destination IP, TTL)
 - [ ] TCP/UDP/ICMP protocol parsing (ports, payload)
 - [ ] Protocol filtering (capture only TCP, UDP, or ICMP)
 - [ ] Export to CSV and JSON
