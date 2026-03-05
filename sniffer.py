@@ -1,6 +1,11 @@
 import socket 
 import struct
 import textwrap
+import sys
+
+# Constant for payload indentation
+PAYLOAD_INDENT = '\n        '
+PAYLOAD_LABEL = '      Payload:'
 
 
 # Unpack Ethernet frame
@@ -146,40 +151,106 @@ def icmp_packet(data):
 
     # data[4:] = le reste du paquet ICMP (données additionnelles)
     return icmp_type, code, checksum, data[4:]
+
+# ============================================================
+# Formatage du Payload
+# ============================================================
+# Le payload est en bytes bruts. Il peut contenir :
+#   - Du texte lisible (requête HTTP, HTML, etc.)
+#   - Du binaire illisible (données chiffrées, images, etc.)
+#
+# On essaie de le décoder en UTF-8. Si ça échoue,
+# on affiche la version hexadécimale.
+#
+# textwrap.wrap() coupe le texte en lignes de 80 caractères
+# pour que l'affichage reste lisible dans le terminal.
+
+def format_payload(data):
+    # Si le payload est vide, on retourne rien
+    if not data:
+        return ''
+    try:
+        # Essayer de décoder en texte lisible
+        text = data.decode('utf-8', errors='replace')
+    except Exception:
+        # Si ça échoue, afficher en hexadécimal
+        text = ' '.join('{:02x}'.format(b) for b in data)
+    
+    # Couper en lignes de 80 caractères pour la lisibilité
+    lines = textwrap.wrap(text, width=80)
+    return '\n'.join(lines)
 def main():
+    # ----------------------------------------------------------
+    # Lire le filtre depuis la ligne de commande
+    # Usage : sudo python3 sniffer.py [tcp|udp|icmp]
+    # Sans argument = capturer tout
+    # ----------------------------------------------------------
+    proto_filter = None
+    if len(sys.argv) > 1:
+        arg = sys.argv[1].lower()
+        if arg == 'tcp':
+            proto_filter = 6
+        elif arg == 'udp':
+            proto_filter = 17
+        elif arg == 'icmp':
+            proto_filter = 1
+        else:
+            print('Filtre invalide. Usage: sudo python3 sniffer.py [tcp|udp|icmp]')
+            sys.exit(1)
+
+    if proto_filter:
+        print('Capturing only {} packets... (Ctrl+C to stop)'.format(sys.argv[1].upper()))
+    else:
+        print('Capturing all packets... (Ctrl+C to stop)')
+
     conn = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
+
     while True:
         raw_data, addr = conn.recvfrom(65536)
         dest_mac, src_mac, eth_proto, data = ethernet_frame(raw_data)
-        print('\nEthernet Frame:')
-        print('  Destination: {}, Source: {}, Protocol: {}'.format(dest_mac, src_mac, eth_proto))
 
-        # IPv4
+        # IPv4 uniquement
         if eth_proto == 8:
             version, header_length, ttl, proto, src, target, data = ipv4_packet(data)
+
+            # Si un filtre est actif, on ignore les autres protocoles
+            if proto_filter and proto != proto_filter:
+                continue
+
+            print('\nEthernet Frame:')
+            print('  Destination: {}, Source: {}, Protocol: {}'.format(dest_mac, src_mac, eth_proto))
             print('  IPv4 Packet:')
             print('    Version: {}, Header Length: {}, TTL: {}'.format(version, header_length, ttl))
             print('    Protocol: {}, Source: {}, Target: {}'.format(proto, src, target))
 
-            # TCP
+# TCP
             if proto == 6:
                 src_port, dest_port, sequence, ack, flag_urg, flag_ack, flag_psh, flag_rst, flag_syn, flag_fin, data = tcp_segment(data)
                 print('    TCP Segment:')
                 print('      Source Port: {}, Destination Port: {}'.format(src_port, dest_port))
                 print('      Sequence: {}, Acknowledgment: {}'.format(sequence, ack))
                 print('      Flags: URG={}, ACK={}, PSH={}, RST={}, SYN={}, FIN={}'.format(flag_urg, flag_ack, flag_psh, flag_rst, flag_syn, flag_fin))
+                if data:
+                    print(PAYLOAD_LABEL)
+                    print('        ' + format_payload(data).replace('\n', '\n        '))
 
             # UDP
             elif proto == 17:
                 src_port, dest_port, size, data = udp_segment(data)
                 print('    UDP Segment:')
                 print('      Source Port: {}, Destination Port: {}, Length: {}'.format(src_port, dest_port, size))
+                if data:
+                    print(PAYLOAD_LABEL)
+                    print('        ' + format_payload(data).replace('\n', '\n        '))
 
             # ICMP
             elif proto == 1:
                 icmp_type, code, checksum, data = icmp_packet(data)
                 print('    ICMP Packet:')
                 print('      Type: {}, Code: {}, Checksum: {}'.format(icmp_type, code, checksum))
+                if data:
+                    print(PAYLOAD_LABEL)
+                    print('        ' + format_payload(data).replace('\n', '\n        '))
 
 if __name__ == '__main__':
     main()
