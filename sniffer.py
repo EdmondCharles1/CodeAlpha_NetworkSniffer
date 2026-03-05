@@ -2,11 +2,15 @@ import socket
 import struct
 import textwrap
 import sys
+import json
+import csv
 
 # Constant for payload indentation
 PAYLOAD_INDENT = '\n        '
 PAYLOAD_LABEL = '      Payload:'
 
+# Liste pour stocker tous les paquets capturés
+captured_packets = []
 
 # Unpack Ethernet frame
 def ethernet_frame(data):
@@ -153,6 +157,36 @@ def icmp_packet(data):
     return icmp_type, code, checksum, data[4:]
 
 # ============================================================
+# Export JSON
+# ============================================================
+# Sauvegarde la liste des paquets dans un fichier .json
+# indent=4 rend le fichier lisible par un humain
+# ensure_ascii=False permet les caractères spéciaux
+
+def export_json(packets, filename='capture.json'):
+    with open(filename, 'w') as f:
+        json.dump(packets, f, indent=4, ensure_ascii=False)
+    print('\n[+] {} packets exported to {}'.format(len(packets), filename))
+
+
+# ============================================================
+# Export CSV
+# ============================================================
+# Sauvegarde la liste des paquets dans un fichier .csv
+# La première ligne contient les noms des colonnes (headers)
+# Chaque paquet = une ligne dans le CSV
+
+def export_csv(packets, filename='capture.csv'):
+    if not packets:
+        print('\n[-] No packets to export')
+        return
+    with open(filename, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=packets[0].keys())
+        writer.writeheader()
+        writer.writerows(packets)
+    print('\n[+] {} packets exported to {}'.format(len(packets), filename))
+
+# ============================================================
 # Formatage du Payload
 # ============================================================
 # Le payload est en bytes bruts. Il peut contenir :
@@ -179,12 +213,8 @@ def format_payload(data):
     # Couper en lignes de 80 caractères pour la lisibilité
     lines = textwrap.wrap(text, width=80)
     return '\n'.join(lines)
+
 def main():
-    # ----------------------------------------------------------
-    # Lire le filtre depuis la ligne de commande
-    # Usage : sudo python3 sniffer.py [tcp|udp|icmp]
-    # Sans argument = capturer tout
-    # ----------------------------------------------------------
     proto_filter = None
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
@@ -205,52 +235,84 @@ def main():
 
     conn = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
 
-    while True:
-        raw_data, addr = conn.recvfrom(65536)
-        dest_mac, src_mac, eth_proto, data = ethernet_frame(raw_data)
+    try:
+        while True:
+            raw_data, addr = conn.recvfrom(65536)
+            dest_mac, src_mac, eth_proto, data = ethernet_frame(raw_data)
 
-        # IPv4 uniquement
-        if eth_proto == 8:
-            version, header_length, ttl, proto, src, target, data = ipv4_packet(data)
+            if eth_proto == 8:
+                version, header_length, ttl, proto, src, target, data = ipv4_packet(data)
 
-            # Si un filtre est actif, on ignore les autres protocoles
-            if proto_filter and proto != proto_filter:
-                continue
+                if proto_filter and proto != proto_filter:
+                    continue
 
-            print('\nEthernet Frame:')
-            print('  Destination: {}, Source: {}, Protocol: {}'.format(dest_mac, src_mac, eth_proto))
-            print('  IPv4 Packet:')
-            print('    Version: {}, Header Length: {}, TTL: {}'.format(version, header_length, ttl))
-            print('    Protocol: {}, Source: {}, Target: {}'.format(proto, src, target))
+                # --- Dictionnaire pour stocker ce paquet ---
+                packet_info = {
+                    'src_mac': src_mac,
+                    'dest_mac': dest_mac,
+                    'src_ip': src,
+                    'dest_ip': target,
+                    'ttl': ttl,
+                    'protocol': '',
+                    'src_port': '',
+                    'dest_port': '',
+                    'info': ''
+                }
 
-# TCP
-            if proto == 6:
-                src_port, dest_port, sequence, ack, flag_urg, flag_ack, flag_psh, flag_rst, flag_syn, flag_fin, data = tcp_segment(data)
-                print('    TCP Segment:')
-                print('      Source Port: {}, Destination Port: {}'.format(src_port, dest_port))
-                print('      Sequence: {}, Acknowledgment: {}'.format(sequence, ack))
-                print('      Flags: URG={}, ACK={}, PSH={}, RST={}, SYN={}, FIN={}'.format(flag_urg, flag_ack, flag_psh, flag_rst, flag_syn, flag_fin))
-                if data:
-                    print(PAYLOAD_LABEL)
-                    print('        ' + format_payload(data).replace('\n', '\n        '))
+                print('\nEthernet Frame:')
+                print('  Destination: {}, Source: {}, Protocol: {}'.format(dest_mac, src_mac, eth_proto))
+                print('  IPv4 Packet:')
+                print('    Version: {}, Header Length: {}, TTL: {}'.format(version, header_length, ttl))
+                print('    Protocol: {}, Source: {}, Target: {}'.format(proto, src, target))
 
-            # UDP
-            elif proto == 17:
-                src_port, dest_port, size, data = udp_segment(data)
-                print('    UDP Segment:')
-                print('      Source Port: {}, Destination Port: {}, Length: {}'.format(src_port, dest_port, size))
-                if data:
-                    print(PAYLOAD_LABEL)
-                    print('        ' + format_payload(data).replace('\n', '\n        '))
+                # TCP
+                if proto == 6:
+                    src_port, dest_port, sequence, ack, flag_urg, flag_ack, flag_psh, flag_rst, flag_syn, flag_fin, data = tcp_segment(data)
+                    packet_info['protocol'] = 'TCP'
+                    packet_info['src_port'] = src_port
+                    packet_info['dest_port'] = dest_port
+                    packet_info['info'] = 'Seq={} Ack={} Flags: SYN={} ACK={} FIN={}'.format(sequence, ack, flag_syn, flag_ack, flag_fin)
+                    print('    TCP Segment:')
+                    print('      Source Port: {}, Destination Port: {}'.format(src_port, dest_port))
+                    print('      Sequence: {}, Acknowledgment: {}'.format(sequence, ack))
+                    print('      Flags: URG={}, ACK={}, PSH={}, RST={}, SYN={}, FIN={}'.format(flag_urg, flag_ack, flag_psh, flag_rst, flag_syn, flag_fin))
+                    if data:
+                        print('      Payload:')
+                        print('        ' + format_payload(data).replace('\n', '\n        '))
 
-            # ICMP
-            elif proto == 1:
-                icmp_type, code, checksum, data = icmp_packet(data)
-                print('    ICMP Packet:')
-                print('      Type: {}, Code: {}, Checksum: {}'.format(icmp_type, code, checksum))
-                if data:
-                    print(PAYLOAD_LABEL)
-                    print('        ' + format_payload(data).replace('\n', '\n        '))
+                # UDP
+                elif proto == 17:
+                    src_port, dest_port, size, data = udp_segment(data)
+                    packet_info['protocol'] = 'UDP'
+                    packet_info['src_port'] = src_port
+                    packet_info['dest_port'] = dest_port
+                    packet_info['info'] = 'Length={}'.format(size)
+                    print('    UDP Segment:')
+                    print('      Source Port: {}, Destination Port: {}, Length: {}'.format(src_port, dest_port, size))
+                    if data:
+                        print('      Payload:')
+                        print('        ' + format_payload(data).replace('\n', '\n        '))
+
+                # ICMP
+                elif proto == 1:
+                    icmp_type, code, checksum, data = icmp_packet(data)
+                    packet_info['protocol'] = 'ICMP'
+                    packet_info['info'] = 'Type={} Code={}'.format(icmp_type, code)
+                    print('    ICMP Packet:')
+                    print('      Type: {}, Code: {}, Checksum: {}'.format(icmp_type, code, checksum))
+                    if data:
+                        print('      Payload:')
+                        print('        ' + format_payload(data).replace('\n', '\n        '))
+
+                # Ajouter le paquet à la liste
+                captured_packets.append(packet_info)
+
+    except KeyboardInterrupt:
+        # Ctrl+C pressé — on exporte les données
+        print('\n\nCapture stopped. {} packets captured.'.format(len(captured_packets)))
+        if captured_packets:
+            export_json(captured_packets)
+            export_csv(captured_packets)
 
 if __name__ == '__main__':
     main()
