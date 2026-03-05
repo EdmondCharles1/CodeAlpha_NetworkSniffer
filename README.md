@@ -19,7 +19,7 @@ This tool captures network packets in real-time and displays detailed informatio
 
 - [x] Ethernet frame parsing (MAC addresses, protocol)
 - [x] IP packet parsing (source/destination IP, TTL)
-- [ ] TCP/UDP/ICMP protocol parsing (ports, payload)
+- [x] TCP/UDP/ICMP protocol parsing (ports, payload)
 - [ ] Protocol filtering (capture only TCP, UDP, or ICMP)
 - [ ] Export to CSV and JSON
 - [ ] Web dashboard with Flask
