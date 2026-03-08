@@ -4,7 +4,7 @@ import threading
 import json
 import csv
 import io
-from flask import Flask, jsonify, render_template_string, request, Response
+from flask import Flask, jsonify, render_template, request, Response
 
 app = Flask(__name__)
 
@@ -163,9 +163,9 @@ def export_csv():
     )
 
 # Route principale : affiche le dashboard HTML
-@app.route('/')
+@app.route('/', methods=['GET'])
 def index():
-    return render_template_string(open('templates/index.html').read())
+    return render_template('index.html')
 
 # ============================================================
 # Lancement
