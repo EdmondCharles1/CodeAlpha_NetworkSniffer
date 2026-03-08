@@ -1,7 +1,10 @@
-from flask import Flask, jsonify, render_template_string
 import socket
 import struct
 import threading
+import json
+import csv
+import io
+from flask import Flask, jsonify, render_template_string, request, Response
 
 app = Flask(__name__)
 
@@ -127,6 +130,38 @@ def api_packets():
     # Renvoyer les 100 derniers
     return jsonify(filtered[-100:])
 
+# Route API : export JSON
+@app.route('/api/export/json')
+def export_json():
+    proto_filter = request.args.get('protocol', '').upper()
+    data = captured_packets
+    if proto_filter and proto_filter != 'ALL':
+        data = [p for p in data if p['protocol'] == proto_filter]
+    return Response(
+        json.dumps(data, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment;filename=capture.json'}
+    )
+
+# Route API : export CSV
+@app.route('/api/export/csv')
+def export_csv():
+    proto_filter = request.args.get('protocol', '').upper()
+    data = captured_packets
+    if proto_filter and proto_filter != 'ALL':
+        data = [p for p in data if p['protocol'] == proto_filter]
+    if not data:
+        return Response('No data', mimetype='text/plain')
+    si = io.StringIO()
+    writer = csv.DictWriter(si, fieldnames=data[0].keys())
+    writer.writeheader()
+    writer.writerows(data)
+    return Response(
+        si.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment;filename=capture.csv'}
+    )
+
 # Route principale : affiche le dashboard HTML
 @app.route('/')
 def index():
@@ -142,3 +177,4 @@ if __name__ == '__main__':
     print('Sniffer started in background...')
     print('Dashboard: http://127.0.0.1:5000')
     app.run(host='0.0.0.0', port=5000, debug=False)
+

@@ -110,6 +110,7 @@
         padding: 0 24px 16px;
         display: flex;
         gap: 8px;
+        align-items: center;
       }
 
       .filter-btn {
@@ -132,6 +133,13 @@
         background: var(--cyan);
         color: var(--bg);
         border-color: var(--cyan);
+      }
+
+      .separator {
+        width: 1px;
+        height: 20px;
+        background: var(--border);
+        margin: 0 4px;
       }
 
       /* ---- Graphique (barres simples) ---- */
@@ -305,7 +313,7 @@
       </div>
     </div>
 
-    <!-- Filtres -->
+    <!-- Filtres + Export -->
     <div class="filters">
       <button class="filter-btn active" onclick="setFilter(this, 'ALL')">
         ALL
@@ -313,6 +321,9 @@
       <button class="filter-btn" onclick="setFilter(this, 'TCP')">TCP</button>
       <button class="filter-btn" onclick="setFilter(this, 'UDP')">UDP</button>
       <button class="filter-btn" onclick="setFilter(this, 'ICMP')">ICMP</button>
+      <div class="separator"></div>
+      <button class="filter-btn" onclick="exportData('json')">↓ JSON</button>
+      <button class="filter-btn" onclick="exportData('csv')">↓ CSV</button>
     </div>
 
     <!-- Graphiques -->
@@ -468,6 +479,13 @@
           .forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         currentFilter = proto;
+      }
+
+      function exportData(fmt) {
+        window.open(
+          "/api/export/" + fmt + "?protocol=" + currentFilter,
+          "_blank",
+        );
       }
     </script>
   </body>
